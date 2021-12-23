@@ -1,6 +1,5 @@
 const util = require('util');
 const exec = require('child_process').exec;
-const vi = require('win-version-info');
 
 class installedBrowser {
     constructor(browserName){
@@ -49,7 +48,10 @@ function getInstalledBrowsersRegKey() {
  * @returns Return the official name of the input registry key.
  */
 function getBrowserNameFromRegKey(regKey) {
-    let value = regKey.split('\\').at(-1).toLowerCase();
+    // let value = regKey.split('\\').at(-1).toLowerCase();
+    let lastValue = regKey.split('\\').pop();
+    let value = lastValue.toLowerCase();
+
     let name = '';
 
     if(value.indexOf('firefox') != -1) name = 'Mozilla Firefox';
