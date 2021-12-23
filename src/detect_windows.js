@@ -1,6 +1,6 @@
 const util = require('util');
-// const exec = util.promisify(require('child_process').exec);
 const exec = require('child_process').exec;
+const vi = require('win-version-info');
 
 class installedBrowser {
     constructor(browserName){
@@ -61,9 +61,14 @@ function getBrowserNameFromRegKey(regKey) {
     return name;
 }
 
+/**
+ * 
+ * @param {String} regKey 
+ * @returns Returns a string indicating the install path of the browser if promise resolve.
+ */
 function getBrowserPathFromRegKey(regKey) {
     let registryQuery = regKey + '\\shell\\open\\command';
-    let command = 'reg query ' + registryQuery + ' /t REG_SZ';
+    let command = 'reg query "' + registryQuery + '" /t REG_SZ';
 
     return new Promise((resolve, reject) => {
         exec(command, function (error, stdout, stderr) {
@@ -79,100 +84,53 @@ function getBrowserPathFromRegKey(regKey) {
                 reject(error);
                 return;
             }
-    
-            let split = stdout.split('"');
-            resolve(split[1]);
+            
+            let path = stdout.split('"')[1];
+
+            // IE don't have double quotes for its path.
+            //    (Default)    REG_SZ    C:\Program Files\Internet Explorer\iexplore.exe
+            if(path === undefined) {
+                let line = stdout.split('\r\n');
+                line = line[2].trim().replace(/\s\s+/g, ' ');
+                let index = line.indexOf('C:');
+                path = line.substr(index);
+            }
+            resolve(path);
         });
     });
 }
 
-module.exports = function (callback) {
+module.exports = function () {
 
-    getInstalledBrowsersRegKey()
+    return getInstalledBrowsersRegKey()
     .then(browsers => {
         let foundBrowser = [];
-        browsers.forEach(browser => {
-            foundBrowser.push(new installedBrowser(getBrowserNameFromRegKey(browser)));
+        browsers.forEach(browserRegKey => {
+            let _browser = new installedBrowser(getBrowserNameFromRegKey(browserRegKey));
+            _browser.regKey = browserRegKey;
+            foundBrowser.push(_browser);
         });
         return Promise.resolve(foundBrowser);
     }).then(browsers => {
+        let promises = [];
         browsers.forEach(browser => {
-            browser.installPath = getBrowserPathFromRegKey(browser);
+            let p = getBrowserPathFromRegKey(browser.regKey).then(value => {
+                browser.installPath = value;
+                // console.log(browser.installPath);
+                return Promise.resolve();
+            });
+            promises.push(p);
         });
-        console.log(browsers);
+        return Promise.all(promises).then(() => {
+            return Promise.resolve(browsers);
+        })
+    }).then(browsers => {
+        browsers.forEach(browser => {
+            let fileInfo = vi(browser.installPath);
+            browser.version = fileInfo.FileVersion;
+        });
+        return Promise.resolve(browsers);
+    }).catch(error => {
+        console.error(error);
     });
-    // getInstalledBrowsersRegKey((err, resp) => {
-    //     if(err) {
-    //         return callback(err, null);
-    //     }
-    //     installedBrowser = resp;
-    //     console.log(installedBrowser);
-    // });
-
-    // console.log(installedBrowser);
-
-    // let registryQuery = 'HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Clients\\StartMenuInternet';
-    // // var command = 'reg query ' + registryQuery + ' | findstr "ProgId"';
-    // let command = 'reg query ' + registryQuery;
-
-    // exec(command, function (err, stdout, stderr) {
-    //     let value;
-    //     // parse the output which is sth like this (Windows 10):
-    //     //   "    ProgId    REG_SZ    ChromeHTML\r\n"
-    //     if (err) {
-    //         console.log(err);
-    //         if (stderr.length > 0) {
-    //             return callback('Unable to execute the query: ' + err);
-    //         } else {
-    //             // findstr failed due to not finding match => key is empty, default browser is IE
-    //             value = 'iexplore.exe';
-    //         }
-    //     }
-
-    //     let browserKey = stdout.split('\r\n').slice(4, -1);
-    //     let foundBrowsers = [];
-    //     browserKey.forEach((value) => {
-    //         let _browser = new installedBrowser();
-    //         _browser.name = getBrowserNameFromRegKey(value);
-    //         _browser.regKey = value;
-    //         foundBrowsers.push(_browser);
-    //     });
-        
-    //     // console.log(getBrowserPathFromRegKey(foundBrowsers[0].regKey));
-    //     foundBrowsers.forEach((browser) => {
-    //         getBrowserPathFromRegKey(browser.regKey, (err, resp) => {
-    //             browser.installPath = resp;
-    //         });
-    //     })
-    //     // getBrowserPathFromRegKey(foundBrowsers[0].regKey, (err, resp) => {
-    //     //     console.log("Response", resp);
-    //     // });
-    //     console.log(foundBrowsers);
-
-    //     // if (!value) {
-    //     //     // merge multiple spaces to one
-    //     //     stdout = stdout.trim().replace(/\s\s+/g, ' ');
-    //     //     var split = stdout.split(' ');
-    //     //     // need third substr, stdout is of this form: "    ProgId    REG_SZ    ChromeHTML\r\n"
-    //     //     value = split[2].toLowerCase();
-    //     // }
-
-    //     // var out = {
-    //     //     isEdge:     value.indexOf('msedge') > -1,       // MSEdgeHTM
-    //     //     isIE:       value.indexOf('ie.http') > -1,      // IE.HTTP
-    //     //     isSafari:   value.indexOf('safari') > -1,       // SafariURL
-    //     //     isFirefox:  value.indexOf('firefox') > -1,      // FirefoxURL
-    //     //     isChrome:   value.indexOf('chrome') > -1,       // ChromeHTML
-    //     //     isChromium: value.indexOf('chromium') > -1,     
-    //     //     isOpera:    value.indexOf('opera') > -1,        // OperaHTML
-    //     //     identity:   value
-    //     // };
-    //     // out.isBlink = (out.isChrome || out.isChromium || out.isOpera);
-    //     // out.isWebkit = (out.isSafari || out.isBlink);
-    //     // out.commonName = require('./common-name')(out);
-
-    //     // callback(null, out);
-
-    //     // console.log(stdout);
-    // });
 };
