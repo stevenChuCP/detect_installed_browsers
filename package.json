@@ -1,0 +1,11 @@
+{
+  "name": "detect_installed_browser",
+  "version": "0.0.1",
+  "description": "Find installed browser and it's version, cross-platform (Win/Mac)",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Steven Chu",
+  "license": "ISC"
+}
