@@ -100,6 +100,30 @@ function getBrowserPathFromRegKey(regKey) {
     });
 }
 
+function getVersionFromPath(path) {
+    let command = 'wmic datafile where name="' + path.replace(/\\/g, "\\\\") + '" get version';
+
+    return new Promise((resolve, reject) => {
+        exec(command, function (error, stdout, stderr) {
+            // parse the output which is sth like this (Windows 10):
+            /**
+             * Version
+             * 96.0.4664.110
+             *
+             *
+             */
+            if (error) {
+                reject(error);
+                return;
+            }
+            
+            // Split the newline and trim out the excessive space
+            let version = stdout.split('\r\r\n')[1].trim().replace(/\s\s+/g, ' ');
+            resolve(version);
+        });
+    });
+}
+
 module.exports = function () {
 
     return getInstalledBrowsersRegKey()
@@ -116,7 +140,6 @@ module.exports = function () {
         browsers.forEach(browser => {
             let p = getBrowserPathFromRegKey(browser.regKey).then(value => {
                 browser.installPath = value;
-                // console.log(browser.installPath);
                 return Promise.resolve();
             });
             promises.push(p);
@@ -125,11 +148,17 @@ module.exports = function () {
             return Promise.resolve(browsers);
         })
     }).then(browsers => {
+        let promises = [];
         browsers.forEach(browser => {
-            let fileInfo = vi(browser.installPath);
-            browser.version = fileInfo.FileVersion;
+            let p = getVersionFromPath(browser.installPath).then(value => {
+                browser.version = value;
+                return Promise.resolve();
+            });
+            promises.push(p);
         });
-        return Promise.resolve(browsers);
+        return Promise.all(promises).then(() => {
+            return Promise.resolve(browsers);
+        });
     }).catch(error => {
         console.error(error);
     });
