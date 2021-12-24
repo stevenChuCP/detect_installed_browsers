@@ -10,13 +10,7 @@ class installedBrowser {
     }
 }
 
-/**
- * Find installed browsers from registry key.
- * 
- * @returns {Promise} Returns an array of installed browser registry key if promise resolve.
- */
-function getInstalledBrowsersRegKey() {
-    let registryQuery = 'HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Clients\\StartMenuInternet';
+function getInstalledBrowserBrowserRegKeyArch(registryQuery) {
     let command = 'reg query ' + registryQuery;
 
     return new Promise((resolve, reject) => {
@@ -27,17 +21,36 @@ function getInstalledBrowsersRegKey() {
             }
             
             // parse the output which is sth like this (Windows 10):
+            // (For x64 computer the arch value is WOW6432Node, x86 is empty)
             /**
-             * HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Clients\StartMenuInternet
+             * HKEY_LOCAL_MACHINE\SOFTWARE\${arch}\Clients\StartMenuInternet
              *     (Default)    REG_SZ    IEXPLORE.EXE
              *
-             * HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Clients\StartMenuInternet\Firefox-308046B0AF4A39CB
-             * HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Clients\StartMenuInternet\Google Chrome
-             * HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Clients\StartMenuInternet\IEXPLORE.EXE
-             * HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Clients\StartMenuInternet\Microsoft Edge
+             * HKEY_LOCAL_MACHINE\SOFTWARE\${arch}\Clients\StartMenuInternet\Firefox-308046B0AF4A39CB
+             * HKEY_LOCAL_MACHINE\SOFTWARE\${arch}\Clients\StartMenuInternet\Google Chrome
+             * HKEY_LOCAL_MACHINE\SOFTWARE\${arch}\Clients\StartMenuInternet\IEXPLORE.EXE
+             * HKEY_LOCAL_MACHINE\SOFTWARE\${arch}\Clients\StartMenuInternet\Microsoft Edge
              */
             resolve(stdout.split('\r\n').slice(4, -1));
         });
+    });
+}
+
+/**
+ * Find installed browsers from registry key.
+ * 
+ * @returns {Promise} Returns an array of installed browser registry key if promise resolve.
+ */
+function getInstalledBrowsersRegKey() {
+    const regQuery64 = 'HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Clients\\StartMenuInternet';
+    const regQuery32 = 'HKEY_LOCAL_MACHINE\\SOFTWARE\\Clients\\StartMenuInternet';
+
+    return getInstalledBrowserBrowserRegKeyArch(regQuery64).catch(error => {
+        return getInstalledBrowserBrowserRegKeyArch(regQuery32);
+    }).then(value => {
+        return Promise.resolve(value);
+    }).catch(error => {
+        console.error(error);
     });
 }
 
@@ -48,10 +61,8 @@ function getInstalledBrowsersRegKey() {
  * @returns Return the official name of the input registry key.
  */
 function getBrowserNameFromRegKey(regKey) {
-    // let value = regKey.split('\\').at(-1).toLowerCase();
     let lastValue = regKey.split('\\').pop();
     let value = lastValue.toLowerCase();
-
     let name = '';
 
     if(value.indexOf('firefox') != -1) name = 'Mozilla Firefox';
