@@ -1,13 +1,10 @@
-const util = require('util');
 const exec = require('child_process').exec;
+const browserInterface = require('./interface.js');
 
-class installedBrowser {
-    constructor(browserName){
-        this.name = browserName;
-        this.installPath = "";
-        this.regKey = "";
-        this.version = "";
-    }
+function installedBrowser(name) {
+    browserInterface.call(this);
+
+    this.name = name;
 }
 
 function getInstalledBrowserBrowserRegKeyArch(registryQuery) {
@@ -170,6 +167,9 @@ module.exports = function () {
             promises.push(p);
         });
         return Promise.all(promises).then(() => {
+            browsers.forEach(browser => {
+                delete browser.regKey;
+            })
             return Promise.resolve(browsers);
         });
     }).catch(error => {
