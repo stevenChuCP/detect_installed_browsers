@@ -57,18 +57,37 @@ function getInstalledBrowsersRegKey() {
  * @param {String} regKey 
  * @returns Return the official name of the input registry key.
  */
-function getBrowserNameFromRegKey(regKey) {
-    let lastValue = regKey.split('\\').pop();
-    let value = lastValue.toLowerCase();
-    let name = '';
+function getBrowserName(regKey) {
+    const command = `reg query "${regKey}\\Capabilities" /v "ApplicationName"`;
 
-    if(value.indexOf('firefox') != -1) name = 'Mozilla Firefox';
-    else if(value.indexOf('google chrome') != -1) name = "Google Chrome";
-    else if(value.indexOf('iexplore') != -1) name = "Internet Explorer";
-    else if(value.indexOf('microsoft edge') != -1) name = "Microsoft Edge";
-    else name = value;
+    let getNameFromRegKey = new Promise((resolve, reject) => {
+        exec(command, (error, stdout, stderr) => {
+            if (error) {
+                reject(error);
+                return;
+            }
+            
+            // parse the output which is sth like this (Windows 10):
+            // (For x64 computer the arch value is WOW6432Node, x86 is empty)
+            /**
+             *
+             * HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Clients\StartMenuInternet\Firefox-308046B0AF4A39CB\Capabilities
+             *     ApplicationName    REG_SZ    Firefox
+             *
+             *  
+             */
+            resolve(stdout.split('\r\n')[2].split('REG_SZ')[1].trim());
+        });
+    });
 
-    return name;
+    return getNameFromRegKey.then(name => {
+        return name;
+    }).catch(err => {
+        let lastValue = regKey.split('\\').pop();
+        let value = lastValue.toLowerCase();
+        if(value.indexOf('iexplore') != -1) return "Internet Explorer";
+        else return Promise.reject(err);
+    });
 }
 
 /**
@@ -76,7 +95,7 @@ function getBrowserNameFromRegKey(regKey) {
  * @param {String} regKey 
  * @returns Returns a string indicating the install path of the browser if promise resolve.
  */
-function getBrowserPathFromRegKey(regKey) {
+function getBrowserPath(regKey) {
     let registryQuery = regKey + '\\shell\\open\\command';
     let command = 'reg query "' + registryQuery + '" /t REG_SZ';
 
@@ -110,7 +129,7 @@ function getBrowserPathFromRegKey(regKey) {
     });
 }
 
-function getVersionFromPath(path) {
+function getVersion(path) {
     let command = 'wmic datafile where name="' + path.replace(/\\/g, "\\\\") + '" get version';
 
     return new Promise((resolve, reject) => {
@@ -134,45 +153,19 @@ function getVersionFromPath(path) {
     });
 }
 
-module.exports = function () {
-
-    return getInstalledBrowsersRegKey()
-    .then(browsers => {
-        let foundBrowser = [];
-        browsers.forEach(browserRegKey => {
-            let _browser = new installedBrowser(getBrowserNameFromRegKey(browserRegKey));
-            _browser.regKey = browserRegKey;
-            foundBrowser.push(_browser);
-        });
-        return Promise.resolve(foundBrowser);
-    }).then(browsers => {
-        let promises = [];
-        browsers.forEach(browser => {
-            let p = getBrowserPathFromRegKey(browser.regKey).then(value => {
-                browser.installPath = value;
-                return Promise.resolve();
-            });
-            promises.push(p);
-        });
-        return Promise.all(promises).then(() => {
-            return Promise.resolve(browsers);
-        })
-    }).then(browsers => {
-        let promises = [];
-        browsers.forEach(browser => {
-            let p = getVersionFromPath(browser.installPath).then(value => {
-                browser.version = value;
-                return Promise.resolve();
-            });
-            promises.push(p);
-        });
-        return Promise.all(promises).then(() => {
-            browsers.forEach(browser => {
-                delete browser.regKey;
-            })
-            return Promise.resolve(browsers);
-        });
-    }).catch(error => {
-        console.error(error);
-    });
+module.exports = async function () {
+    let detectedBrowsers = [];
+    try {
+        const foundBrowsersRegKey = await getInstalledBrowsersRegKey();
+        for (const browserRegKey of foundBrowsersRegKey) {
+            const browserName = await getBrowserName(browserRegKey);
+            let browser = new installedBrowser(browserName);
+            browser.installPath = await getBrowserPath(browserRegKey);
+            browser.version = await getVersion(browser.installPath);
+            detectedBrowsers.push(browser);
+        }
+        return detectedBrowsers;
+    } catch(err) {
+        return Promise.reject(err);
+    }
 };
